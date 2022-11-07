@@ -13,21 +13,34 @@ function Get-RedfishAPIRoot {
         Write-Verbose -Message "[PROCESS] $($myInvocation.MyCommand)"
         try {
             Write-Verbose -Message "Attempting to connect to APIRoot at $Uri"
-            $Result = Invoke-RedfishMethod -uri $Uri -Method Get
-            Switch ($Result.StatusCode){
-                404 {
-                    Write-Error -Exception "Not Found" -Message "API Endpoint was not found at $Target" -Category ObjectNotFound -RecommendedAction "Check that this endpoint is Redfish capable"
-                    throw
+            $Result = Invoke-RedfishMethod -uri $Uri -Method Get -Timeout 2
+            Write-Verbose -Message "Statuscode: $($Result.StatusCode)"
+            If($Result){
+                Switch ($Result.StatusCode){
+                    404 {
+                        Write-Error -Exception "Not Found" -Message "API Endpoint was not found at $Target" -Category ObjectNotFound -RecommendedAction "Check that this endpoint is Redfish capable"
+                    }
+                    200 {
+                        Write-Verbose -Message "Succesfully connected to API Root"
+                        $Result
+                    }
+                    default{
+                        Break
+                    }
+
                 }
-                200 {
-                    Write-Verbose -Message "Succesfully connected to API Root"
-                    $($Result.Content | ConvertFrom-Json)
+            }else{
+                $Result = @{
+                    StatusCode = 408
                 }
             }
         }
         catch {
             Write-Error "Failed to get the root API"
-            $_
+            $Result = @{
+                StatusCode = 408
+                Content = "Timeout connecting to target"
+            }
         }
     }
     end{
