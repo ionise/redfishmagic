@@ -13,7 +13,7 @@ function Get-RedfishAPIRoot {
         Write-Verbose -Message "[PROCESS] $($myInvocation.MyCommand)"
         try {
             Write-Verbose -Message "Attempting to connect to APIRoot at $Uri"
-            $Result = Invoke-RedfishMethod -uri $Uri -Method Get -Timeout 2
+            $Result = Invoke-RedfishMethod -uri $Uri -Method Get -Timeout 5
             Write-Verbose -Message "Statuscode: $($Result.StatusCode)"
             If($Result){
                 Switch ($Result.StatusCode){

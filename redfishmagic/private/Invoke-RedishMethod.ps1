@@ -5,16 +5,22 @@ function Invoke-RedfishMethod {
         [Parameter(Mandatory=$true)]
         [string]$uri,
         [Parameter(Mandatory=$true)]
-        [ValidateSet("Get","Post")]
+        [ValidateSet("Get","Post","Delete")]
         [string]$Method,
         [Parameter(Mandatory=$False)]
         [pscredential]$Credential,
         [Parameter(Mandatory=$False)]
-        [string]$XToken,
+        [securestring]$XToken,
         [Parameter(Mandatory=$false)]
         $Body,
         [Parameter(Mandatory=$false)]
-        [string]$ContentType
+        [string]$ContentType,
+        <# .PARAMETER Timeout
+        Specify how long to attempt to connect to the target in seconds. Default 5 Seconds
+        #>
+        [Parameter(Mandatory=$false)]
+        [Int]
+        $Timeout = 5
     )
     
     begin {
@@ -52,25 +58,34 @@ namespace Local.ToolkitExtensions.Net.CertificatePolicy
         }
 
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::TLS12
-        Write-Verbose -Message "Setting the appropriate header type"
-                    
-        
-        If($XToken){
-            Write-Verbose -Message "Header type is for XAuth"
-            $Headers = @{'Accept' = 'application/json';'Auth-X-Token' = $XToken}
-        }else{
-            Write-Verbose -Message "Header type is for basic authentication"
-            $Headers = @{'Accept' = 'application/json'}
-        }
-        Write-Verbose -Message "Headers: $($Headers | ConvertTo-Json)"
-        
         $Arguments=$null
         $Arguments = @{
             Uri = $uri
             Method = $Method
             ErrorVariable = 'ErrorMessage'
-            Headers = $Headers
         }
+    
+        Write-Verbose -Message "Setting the appropriate header type"
+        If($XToken){
+            Write-Verbose -Message "Header type is for XAuth"
+            $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($XToken)
+            $UnsecurePassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+            $Headers = @{
+                'Accept' = 'application/json'
+                'X-Auth-Token' = $UnsecurePassword
+            }
+            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+        }else{
+            Write-Verbose -Message "Header type is for basic authentication"
+            $Headers = @{
+                'Accept' = 'application/json'
+            }
+        }
+        Write-Verbose -Message "Headers: $($Headers | ConvertTo-Json)"
+        
+        $Arguments.Headers = $Headers
+        Remove-Variable Headers
+    
         If($Credential){
             Write-Verbose -Message "Adding credentials to the arguments"
             $Arguments.Credential = $Credential
@@ -97,16 +112,20 @@ namespace Local.ToolkitExtensions.Net.CertificatePolicy
         try {
             If($PowerShellVersion -gt 5){
                 Write-Verbose -Message "New Powershell supports SkipCertificateCheck"
-                $Result = Invoke-WebRequest @Arguments -SkipCertificateCheck -SkipHeaderValidation -UseBasicParsing 
+                $Result = Invoke-WebRequest @Arguments -SkipCertificateCheck -SkipHeaderValidation -UseBasicParsing -TimeoutSec $Timeout
             }
             else{
                 Write-Verbose -Message "Legacy Powershell needs help to skip certificate checking"
                 SkipCertificateCheck
-                $Result = Invoke-WebRequest @Arguments -UseBasicParsing 
+                $Result = Invoke-WebRequest @Arguments -UseBasicParsing -TimeoutSec $Timeout
             }
             Write-Verbose "Result:`r`n$Result"
             Write-Verbose -Message "StatusCode: $($Result.StatusCode) "
             $Result
+        }
+        catch [System.TimeoutException]{
+            Write-Error "Connection Timed out" -Category ConnectionError -CategoryReason "Timeout"
+            throw
         }
         catch {
             Write-Error "ERROR, Problem connecting to Redfish API `r`n $($ErrorMessage)"
@@ -116,6 +135,10 @@ namespace Local.ToolkitExtensions.Net.CertificatePolicy
     }
     end {
         Write-Verbose -Message "[END    ] $($myInvocation.MyCommand)"
+        Remove-Variable arguments
+		[GC]::Collect()
+		[GC]::WaitForPendingFinalizers()
     }
 }
+
 

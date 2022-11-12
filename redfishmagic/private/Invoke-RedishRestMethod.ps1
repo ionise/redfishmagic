@@ -1,5 +1,5 @@
 
-function Invoke-RedfishMethod {
+function Invoke-RedfishRestMethod {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory=$true)]
@@ -7,8 +7,6 @@ function Invoke-RedfishMethod {
         [Parameter(Mandatory=$true)]
         [ValidateSet("Get","Post","Delete")]
         [string]$Method,
-        [Parameter(Mandatory=$False)]
-        [pscredential]$Credential,
         [Parameter(Mandatory=$False)]
         [securestring]$XToken,
         [Parameter(Mandatory=$false)]
@@ -66,31 +64,20 @@ namespace Local.ToolkitExtensions.Net.CertificatePolicy
         }
     
         Write-Verbose -Message "Setting the appropriate header type"
-        If($XToken){
-            Write-Verbose -Message "Header type is for XAuth"
-            $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($XToken)
-            $UnsecurePassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
-            $Headers = @{
-                'Accept' = 'application/json'
-                'X-Auth-Token' = $UnsecurePassword
-            }
-            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
-        }else{
-            Write-Verbose -Message "Header type is for basic authentication"
-            $Headers = @{
-                'Accept' = 'application/json'
-            }
+        Write-Verbose -Message "Header type is for XAuth"
+        $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($XToken)
+        $UnsecurePassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+        $Headers = @{
+            'Accept' = 'application/json'
+            'X-Auth-Token' = $UnsecurePassword
         }
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+    
         Write-Verbose -Message "Headers: $($Headers | ConvertTo-Json)"
         
         $Arguments.Headers = $Headers
         Remove-Variable Headers
     
-        If($Credential){
-            Write-Verbose -Message "Adding credentials to the arguments"
-            $Arguments.Credential = $Credential
-        }
-
         If($Body){
             Write-Verbose -Message "Adding body to the arguments"
             Write-Verbose -Message "Body: $($Body|ConvertTo-Json) "
@@ -112,12 +99,12 @@ namespace Local.ToolkitExtensions.Net.CertificatePolicy
         try {
             If($PowerShellVersion -gt 5){
                 Write-Verbose -Message "New Powershell supports SkipCertificateCheck"
-                $Result = Invoke-WebRequest @Arguments -SkipCertificateCheck -SkipHeaderValidation -UseBasicParsing -TimeoutSec $Timeout
+                $Result = Invoke-RestMethod @Arguments -SkipCertificateCheck -SkipHeaderValidation -UseBasicParsing -TimeoutSec $Timeout
             }
             else{
                 Write-Verbose -Message "Legacy Powershell needs help to skip certificate checking"
                 SkipCertificateCheck
-                $Result = Invoke-WebRequest @Arguments -UseBasicParsing -TimeoutSec $Timeout
+                $Result = Invoke-RestMethod @Arguments -UseBasicParsing -TimeoutSec $Timeout
             }
             Write-Verbose "Result:`r`n$Result"
             Write-Verbose -Message "StatusCode: $($Result.StatusCode) "
@@ -135,10 +122,9 @@ namespace Local.ToolkitExtensions.Net.CertificatePolicy
     }
     end {
         Write-Verbose -Message "[END    ] $($myInvocation.MyCommand)"
+        # Clean up variables that might contain sensitive information
         Remove-Variable arguments
 		[GC]::Collect()
 		[GC]::WaitForPendingFinalizers()
     }
 }
-
-
